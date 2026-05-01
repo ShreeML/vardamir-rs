@@ -1,7 +1,9 @@
+#![allow(dead_code)]
+
+use serde::{Deserialize, Serialize};
 use sha3::{Digest, Sha3_256};
 
-#[derive(Debug)]
-#[allow(dead_code)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct DecisionRecord {
     timestamp: u64,
     decision: String,
@@ -10,14 +12,13 @@ pub struct DecisionRecord {
     kind: DecisionKind,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub enum DecisionKind {
     Navigate,
     Classify,
     Abort,
 }
 
-#[allow(dead_code)]
 impl DecisionRecord {
     pub fn new(timestamp: u64, decision: String, kind: DecisionKind) -> DecisionRecord {
         DecisionRecord {
@@ -56,13 +57,11 @@ impl DecisionRecord {
     }
 }
 
-#[derive(Debug)]
-#[allow(dead_code)]
+#[derive(Debug,Serialize,Deserialize)]
 pub struct DecisionChain {
     records: Vec<DecisionRecord>,
 }
 
-#[allow(dead_code)]
 impl DecisionChain {
     pub fn new() -> DecisionChain {
         DecisionChain {
