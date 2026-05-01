@@ -1,0 +1,5 @@
+[workspace]
+members = [
+    "vardamir-rs-core",
+]
+resolver = "2"
