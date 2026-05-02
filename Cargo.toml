@@ -1,5 +1,5 @@
 [workspace]
 members = [
-    "vardamir-rs-core",
+    "vardamir-rs-core", "vardamir-rs-log",
 ]
 resolver = "2"

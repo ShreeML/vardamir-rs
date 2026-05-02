@@ -7,57 +7,45 @@ use sha3::{Digest, Sha3_256};
 pub struct DecisionRecord {
     timestamp: u64,
     decision: String,
-    context_hash: Vec<u8>,
-    prev_hash: Vec<u8>,
-    kind: DecisionKind,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub enum DecisionKind {
-    Navigate,
-    Classify,
-    Abort,
+    context_hash: [u8; 32],
+    prev_hash: [u8; 32],
+    kind: String,
 }
 
 impl DecisionRecord {
-    pub fn new(timestamp: u64, decision: String, kind: DecisionKind) -> DecisionRecord {
+    pub fn new(timestamp: u64, decision: String, kind: String) -> DecisionRecord {
         DecisionRecord {
             timestamp,
             decision,
-            context_hash: Vec::new(),
-            prev_hash: Vec::new(),
+            context_hash: [0u8; 32], //placeholder
+            prev_hash: [0u8; 32],
             kind,
         }
     }
 
     pub fn summarize(&self) -> String {
-        let kind_of = match self.kind {
-            DecisionKind::Navigate => "Navigate",
-            DecisionKind::Classify => "Classify",
-            DecisionKind::Abort => "Abort",
-        };
         format!(
             "Decision of type {} at {} : {}",
-            kind_of, self.timestamp, self.decision
+            self.kind, self.timestamp, self.decision
         )
     }
 
     pub fn is_genesis(&self) -> bool {
-        self.prev_hash.is_empty()
+        self.prev_hash == [0u8; 32]
     }
 
-    pub fn compute_hash(&self) -> Vec<u8> {
+    pub fn compute_hash(&self) -> [u8; 32] {
         let mut hasher = Sha3_256::new();
 
         hasher.update(self.timestamp.to_be_bytes());
         hasher.update(self.decision.as_bytes());
-
-        let result: Vec<u8> = hasher.finalize().to_vec();
+        hasher.update(self.kind.as_bytes());
+        let result: [u8; 32] = hasher.finalize().into();
         result
     }
 }
 
-#[derive(Debug,Serialize,Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Default)]
 pub struct DecisionChain {
     records: Vec<DecisionRecord>,
 }
