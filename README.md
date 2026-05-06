@@ -17,3 +17,4 @@ Early development. Core data types in progress.
 ## Crates
 
 - `vardamir-rs-core` — core data types (in progress)
+- `vardamir-rs-log` — logging functions (in progress)

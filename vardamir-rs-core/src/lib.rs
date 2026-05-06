@@ -76,4 +76,8 @@ impl DecisionChain {
         }
         true
     }
+
+    pub fn iter(&self) -> std::slice::Iter<'_, DecisionRecord> {
+        self.records.iter()
+    }
 }
