@@ -1,6 +1,3 @@
-#![allow(dead_code)]
-#![allow(unused_imports)]
-
 use std::fs::{File, OpenOptions};
 use std::io::{BufReader, BufWriter, Read, Seek, SeekFrom, Write};
 use vardamir_rs_core::{DecisionChain, DecisionRecord};
@@ -16,16 +13,17 @@ pub struct LogWriter {
 
 impl LogWriter {
     pub fn create(path: &str) -> std::io::Result<Self> {
-        let file = OpenOptions::new()
-            .write(true)
-            .create(true)
-            .append(true)
-            .open(path)?;
+        let file = OpenOptions::new().create(true).append(true).open(path)?;
+
+        let needs_header = file.metadata()?.len();
 
         let mut writer = LogWriter {
             file: BufWriter::with_capacity(8192, file),
         };
-        writer.write_file_header()?;
+
+        if needs_header == 0 {
+            writer.write_file_header()?;
+        }
         Ok(writer)
     }
 
@@ -65,9 +63,7 @@ pub struct LogReader {
 
 impl LogReader {
     pub fn open(path: &str) -> std::io::Result<Self> {
-        let file = OpenOptions::new()
-            .read(true)
-            .open(path)?;
+        let file = OpenOptions::new().read(true).open(path)?;
         let mut reader = LogReader {
             file: BufReader::with_capacity(8192, file),
         };
@@ -133,37 +129,34 @@ impl LogReader {
         Ok(Some(record))
     }
 
-    pub fn read_all(&mut self) -> std::io::Result<Vec<DecisionRecord>>{
-        let mut records  = vec![];
-        loop{
-            match self.record_reader(){
-            Ok(Some(record)) => records.push(record),
-            Ok(None) => break,
-            Err(e) => return Err(e),
+    pub fn read_all(&mut self) -> std::io::Result<DecisionChain> {
+        let mut records = DecisionChain::new();
+        loop {
+            match self.record_reader() {
+                Ok(Some(record)) => records.append(record),
+                Ok(None) => break,
+                Err(e) => return Err(e),
             }
         }
         Ok(records)
     }
 }
 
-pub fn recover(path : &str) -> std::io::Result<()>{
-    let mut file = OpenOptions::new()
-        .read(true)
-        .write(true)
-        .open(path)?;
+pub fn recover(path: &str) -> std::io::Result<()> {
+    let mut file = OpenOptions::new().read(true).write(true).open(path)?;
 
     file.seek(SeekFrom::Start(FILE_HEADER_SIZE as u64))?;
 
     loop {
-        let safe_point = file.seek(SeekFrom::Current(0))?;
+        let safe_point = file.stream_position()?;
 
         let mut length = [0u8; 8];
-        match file.read_exact(&mut length){
-            Ok(()) => {},
+        match file.read_exact(&mut length) {
+            Ok(()) => {}
             Err(e) if e.kind() == std::io::ErrorKind::UnexpectedEof => break Ok(()),
             Err(e) => return Err(e),
         }
-        
+
         let length = u64::from_be_bytes(length);
 
         let mut crc = [0u8; 8];
@@ -179,5 +172,129 @@ pub fn recover(path : &str) -> std::io::Result<()>{
             file.set_len(safe_point)?;
             return Ok(());
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use vardamir_rs_core::{DecisionChain, DecisionRecord};
+
+    #[test]
+    fn test_write_and_read() {
+        let mut chain = DecisionChain::new();
+        chain.append(DecisionRecord::new(
+            1200,
+            "Turn Left".to_string(),
+            "Navigation".to_string(),
+        ));
+        chain.append(DecisionRecord::new(
+            1202,
+            "Located Target".to_string(),
+            "Identification".to_string(),
+        ));
+        chain.append(DecisionRecord::new(
+            1204,
+            "Preparing all systems".to_string(),
+            "Preparation".to_string(),
+        ));
+
+        let path = "test_read_and_write.vdmr";
+        let mut writer = LogWriter::create(path).expect("failed to create LogWriter");
+        writer.write_chain(&chain).expect("failed to write chain");
+
+        let mut reader = LogReader::open(path).expect("failed to open LogReader");
+        let log = reader.read_all().expect("failed to read all records");
+
+        assert_eq!(chain, log);
+        std::fs::remove_file(path).ok();
+    }
+
+    #[test]
+    fn test_catches_tampering() {
+        let mut chain = DecisionChain::new();
+        chain.append(DecisionRecord::new(
+            1200,
+            "Turn Left".to_string(),
+            "Navigation".to_string(),
+        ));
+        chain.append(DecisionRecord::new(
+            1202,
+            "Located Target".to_string(),
+            "Identification".to_string(),
+        ));
+        chain.append(DecisionRecord::new(
+            1204,
+            "Preparing all systems".to_string(),
+            "Preparation".to_string(),
+        ));
+
+        let path = "tampering.vdmr";
+        let mut writer = LogWriter::create(path).expect("failed to create LogWriter");
+        writer.write_chain(&chain).expect("failed to write chain");
+
+        let mut file = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(path)
+            .expect("failed to open file for tampering");
+        file.seek(SeekFrom::Start(
+            FILE_HEADER_SIZE as u64 + RECORD_HEADER_SIZE as u64 + 5,
+        ))
+        .expect("failed to seek to tamper position");
+        file.write_all(b"t").expect("failed to write tampered byte");
+
+        let mut reader = LogReader::open(path).expect("failed to open LogReader after tamper");
+        let result = reader.read_all();
+        assert!(
+            result.is_err(),
+            "expected Err due to CRC mismatch but got Ok"
+        );
+
+        std::fs::remove_file(path).ok();
+    }
+
+    #[test]
+    fn test_bad_tail() {
+        let mut chain = DecisionChain::new();
+        chain.append(DecisionRecord::new(
+            1200,
+            "Turn Left".to_string(),
+            "Navigation".to_string(),
+        ));
+        chain.append(DecisionRecord::new(
+            1202,
+            "Located Target".to_string(),
+            "Identification".to_string(),
+        ));
+        chain.append(DecisionRecord::new(
+            1204,
+            "Preparing all systems".to_string(),
+            "Preparation".to_string(),
+        ));
+
+        let path = "bad_tail.vdmr";
+        let mut writer = LogWriter::create(path).expect("failed to create LogWriter");
+        writer.write_chain(&chain).expect("failed to write chain");
+
+        let mut file = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(path)
+            .expect("failed to open file for bad tail injection");
+        file.seek(SeekFrom::End(0))
+            .expect("failed to seek to end of file");
+        file.write_all(b"test")
+            .expect("failed to write garbage tail");
+
+        recover(path).expect("failed to recover log file");
+
+        let mut reader = LogReader::open(path).expect("failed to open LogReader after recovery");
+        let log = reader
+            .read_all()
+            .expect("failed to read all records after recovery");
+
+        assert_eq!(chain, log);
+        std::fs::remove_file(path).ok();
     }
 }
