@@ -54,8 +54,7 @@ in the attestation layer via independent entry signing.
 
 Vardamir provides tamper detection via SHA3-256 hash chaining 
 and CRC32 corruption detection. It does not currently provide 
-encryption or hardware attestation. See threat-model.md for 
-the full security analysis including known limitations.
+encryption or hardware attestation.
 
 ## License
 
