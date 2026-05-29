@@ -103,14 +103,6 @@ impl DecisionChain {
         self.records.iter()
     }
 
-    pub fn len(&self) -> usize {
-        self.records.len()
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.len() == 0
-    }
-
     #[cfg(test)]
     pub fn tamper_record(&mut self, index: usize, new_kind: String) {
         self.records[index].kind = new_kind

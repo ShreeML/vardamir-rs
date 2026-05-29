@@ -1,55 +1,60 @@
 # vardamir-rs
 
-A cryptographically verifiable decision ledger for offline autonomous systems.
+A cryptographically verifiable, offline-capable decision ledger
+for autonomous systems operating in denied-network environments.
 
 ## The Problem
 
-Autonomous systems like UAVs, robots, and AI vehicles often operate in environments with no network access. During these missions they make hundreds of critical decisions. When the system returns, there needs to be strong proof of what decisions were made and in what order — and that the log has not been tampered with later. Regular logging doesn't provide cryptographic guarantees. Vardamir aims to solve this.
+Autonomous systems — UAVs, robots, AI-driven vehicles — make 
+hundreds of consequential decisions during offline operation. 
+When they return, there is no way to prove what was decided, 
+why, or whether the log was tampered with afterward. Existing 
+logging solutions offer no cryptographic guarantees. Vardamir 
+fills that gap.
 
 ## How It Works
 
-- Records are linked using SHA3-256 hash chaining. Any modification breaks the entire chain.
-- Decisions are stored in a binary `.vdmr` file format containing length prefix, CRC32 checksum, and a signature.
-- The log supports crash-safe appends and includes recovery logic that truncates incomplete entries after power loss.
-- Per-record attestation signatures (using HMAC-SHA3-256) allow proving which model on which hardware produced each decision.
+- Every decision is recorded with a SHA3-256 hash linking it 
+  to the previous record. Modifying any entry breaks the chain.
+- Records are written to a binary `.vdmr` file with CRC32 
+  integrity checks and crash-safe append-only semantics.
+- Power-loss recovery detects and truncates incomplete tail 
+  entries on restart, leaving the chain in a valid state.
+- Hardware-bound attestation signatures (in progress) will 
+  make the log unforgeable without the physical device.
 
-## Architecture
+## Crates
 
-The project is split into several crates:
-
-- **vardamir-rs-core**: Core data structures (`DecisionRecord`, `DecisionChain`) and hash chaining logic.
-- **vardamir-rs-log**: Binary log writer, reader, and recovery implementation.
-- **vardamir-rs-attest**: Attestation layer with `DeviceIdentity`, `ModelCommitment`, and `AttestationKey` derivation + signing.
-- **vardamir-rs-cli**: Command-line interface (planned).
-
-The long-term goal is to make the core run in `no_std` environments for bare-metal embedded systems.
+- `vardamir-rs-core` — `DecisionRecord`, `DecisionChain`, 
+  SHA3-256 hashing, serde serialization. Phase 1 done.
+- `vardamir-rs-log` — Binary `.vdmr` file format, `LogWriter`,
+  `LogReader`, crash recovery. Phase 1 done.
+- `vardamir-rs-attest` — Hardware-bound key derivation and 
+  entry signing. Planned.
+- `vardamir-rs-cli` — Command-line verifier and recorder. 
+  Planned.
 
 ## Status
 
-Phase 1 (core logic and log engine) is complete.  
-The attestation layer with per-record signatures has now been integrated.  
-All tests are passing.
+Phase 1 — core data types and log engine — is built and tested.
+Phase 2 (attestation layer) is in progress.
 
-**Next steps:**
-- Port the core crate to `no_std` + `alloc`
-- Implement the CLI tool
-- Improve attestation key management and add hardware binding
+Known limitation: tampering with the final record in a chain
+is not detectable by hash chaining alone. This is addressed
+in the attestation layer via independent entry signing.
 
-## Known Limitations & Vulnerabilities
+## Building
 
-- Key management is currently quite manual. The user must supply the correct list of `AttestationKey`s in exact order when writing or reading logs. This is fragile and will need improvement.
-- Attestation is still software-only. Real deployments will need proper hardware binding (TPM or secure element).
-- Recovery is best-effort. While it handles common crash scenarios, very messy corruption can still cause problems.
-- Test device identities are predictable. Production code must use strong hardware-derived identities.
-- The last record in the chain relies heavily on its signature for protection (hash chaining alone is not enough for the tail).
+    git clone https://github.com/ShreeML/vardamir-rs
+    cd vardamir-rs
+    cargo build --workspace
+    cargo test --workspace
 
-These limitations are acceptable during the core development phase, but they will be addressed before using this in real autonomous systems.
+## Security Model
 
-## Building & Testing
-
-```bash
-cargo build --workspace
-cargo test --workspace
+Vardamir provides tamper detection via SHA3-256 hash chaining 
+and CRC32 corruption detection. It does not currently provide 
+encryption or hardware attestation.
 
 ## License
 
