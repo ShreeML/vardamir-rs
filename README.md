@@ -50,6 +50,7 @@ These limitations are acceptable during the core development phase, but they wil
 ```bash
 cargo build --workspace
 cargo test --workspace
+```
 
 ## License
 
