@@ -1,3 +1,14 @@
+#![no_std]
+
+extern crate alloc;
+
+#[cfg(feature = "std")]
+extern crate std;
+
+pub use alloc::string::String;
+pub use alloc::vec::Vec;
+use alloc::format;
+
 use serde::{Deserialize, Serialize};
 use sha3::{Digest, Sha3_256};
 
@@ -99,7 +110,7 @@ impl DecisionChain {
         true
     }
 
-    pub fn iter(&self) -> std::slice::Iter<'_, DecisionRecord> {
+    pub fn iter(&self) -> core::slice::Iter<'_, DecisionRecord> {
         self.records.iter()
     }
 
@@ -124,14 +135,17 @@ mod tests {
     #[test]
     fn test_is_genesis() {
         let mut chain = DecisionChain::new();
-        let record_1 = DecisionRecord::new(1200, "Turn Left".to_string(), "Navigation".to_string());
+        let record_1 = DecisionRecord::new(
+            1200, 
+            String::from("Turn Left"), 
+            String::from("Navigation"));
         assert!(record_1.is_genesis());
         chain.append(record_1);
 
         let record_2 = DecisionRecord::new(
             1202,
-            "Located Target".to_string(),
-            "Identification".to_string(),
+            String::from("Located Target"),
+            String::from("Identification"),
         );
         chain.append(record_2);
 
@@ -143,16 +157,19 @@ mod tests {
 
     #[test]
     fn test_compute_hash() {
-        let record_1 = DecisionRecord::new(1200, "Turn Left".to_string(), "Navigation".to_string());
+        let record_1 = DecisionRecord::new(
+            1200, 
+            String::from("Turn Left"), 
+            String::from("Navigation"));
         let record_2 = DecisionRecord::new(
             1202,
-            "Located Target".to_string(),
-            "Identification".to_string(),
+            String::from("Located Target"),
+            String::from("Identification"),
         );
         let record_3 = DecisionRecord::new(
             1202,
-            "Located Target".to_string(),
-            "Identification".to_string(),
+            String::from("Located Target"),
+            String::from("Identification"),
         );
         assert_eq!(record_2.compute_hash(), record_3.compute_hash());
         assert_ne!(record_1.compute_hash(), record_2.compute_hash());
@@ -161,14 +178,17 @@ mod tests {
     #[test]
     fn test_append() {
         let mut chain = DecisionChain::new();
-        let record_1 = DecisionRecord::new(1200, "Turn Left".to_string(), "Navigation".to_string());
+        let record_1 = DecisionRecord::new(
+            1200, 
+            String::from("Turn Left"), 
+            String::from("Navigation"));
         let hash = record_1.compute_hash();
         chain.append(record_1);
 
         let record_2 = DecisionRecord::new(
             1202,
-            "Located Target".to_string(),
-            "Identification".to_string(),
+            String::from("Located Target"),
+            String::from("Identification"),
         );
         chain.append(record_2);
 
@@ -181,38 +201,44 @@ mod tests {
     #[test]
     fn test_verify() {
         let mut chain = DecisionChain::new();
-        let record_1 = DecisionRecord::new(1200, "Turn Left".to_string(), "Navigation".to_string());
+        let record_1 = DecisionRecord::new(
+            1200, 
+            String::from("Turn Left"), 
+            String::from("Navigation"));
         chain.append(record_1);
 
         let record_2 = DecisionRecord::new(
             1202,
-            "Located Target".to_string(),
-            "Identification".to_string(),
+            String::from("Located Target"),
+            String::from("Identification"),
         );
         chain.append(record_2);
 
         let record_3 = DecisionRecord::new(
             1204,
-            "Preparing systems".to_string(),
-            "Preparation".to_string(),
+            String::from("Preparing systems"),
+            String::from("Preparation"),
         );
         chain.append(record_3);
 
         assert!(chain.verify());
-        chain.tamper_record(1, "tampered".to_string());
+        chain.tamper_record(1, String::from("tampered"));
         assert!(!chain.verify());
     }
 
     #[test]
     fn test_push_raw() {
-        let mut chain = DecisionChain::new();
-        let record_1 = DecisionRecord::new(1200, "Turn Left".to_string(), "Navigation".to_string());
+        let mut chain = DecisionChain::new();        
+        let record_1 = DecisionRecord::new(
+            1200, 
+            String::from("Turn Left"), 
+            String::from("Navigation"));
         chain.append(record_1);
 
         let record_2 = DecisionRecord::new(
             1202,
-            "Located Target".to_string(),
-            "Identification".to_string(),
+            String::from("Located Target"),
+            String::from("Identification"),
         );
         let hash = record_2.prev_hash().clone();
         chain.push_raw(record_2);
