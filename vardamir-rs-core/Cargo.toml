@@ -3,10 +3,14 @@ name = "vardamir-rs-core"
 version = "0.1.0"
 edition = "2024"
 
+[dependencies]
+sha3 = { version = "0.10", default-features = false }
+serde = { version = "1.0", default-features = false, features = ["derive"] }
+thiserror = { version = "1.0", default-features = false }
+
 [features]
 default = ["std"]
-std = []
-
-[dependencies]
-sha3 = "0.10"
-serde = { version = "1", features = ["derive"] }
+std = [
+    "sha3/std",
+    "serde/std",
+]

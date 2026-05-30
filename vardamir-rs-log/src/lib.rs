@@ -1,7 +1,11 @@
 use std::fs::{File, OpenOptions};
 use std::io::{BufReader, BufWriter, Read, Seek, SeekFrom, Write};
 use vardamir_rs_attest::AttestationKey;
-use vardamir_rs_core::{DecisionChain, DecisionRecord};
+use vardamir_rs_core::{DecisionChain, DecisionRecord, VardamirError};
+
+extern crate alloc;
+pub use alloc::format;
+pub use alloc::string::String;
 
 pub const MAGIC: &[u8; 4] = b"VDMR";
 pub const VERSION: u16 = 1;
@@ -13,7 +17,7 @@ pub struct LogWriter {
 }
 
 impl LogWriter {
-    pub fn create(path: &str) -> std::io::Result<Self> {
+    pub fn create(path: &str) -> Result<Self, VardamirError> {
         let file = OpenOptions::new().create(true).append(true).open(path)?;
 
         let needs_header = file.metadata()?.len();
@@ -28,7 +32,7 @@ impl LogWriter {
         Ok(writer)
     }
 
-    fn write_file_header(&mut self) -> std::io::Result<()> {
+    fn write_file_header(&mut self) -> Result<(), VardamirError> {
         self.file.write_all(MAGIC)?;
         self.file.write_all(&VERSION.to_be_bytes())?;
         self.file.write_all(&[0u8; 2])?;
@@ -40,7 +44,7 @@ impl LogWriter {
         &mut self,
         record: &DecisionRecord,
         key: &AttestationKey,
-    ) -> std::io::Result<()> {
+    ) -> Result<(), VardamirError> {
         let bytes = bincode::serialize(&record)
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
         let len = bytes.len() as u64;
@@ -62,12 +66,11 @@ impl LogWriter {
         &mut self,
         chain: &DecisionChain,
         keys: &[AttestationKey],
-    ) -> std::io::Result<()> {
+    ) -> Result<(), VardamirError> {
         if chain.len() != keys.len() {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidInput,
+            return Err(VardamirError::InvalidData(String::from(
                 "Number of keys must match number of records",
-            ));
+            )));
         }
 
         for (record, key) in chain.iter().zip(keys) {
@@ -82,7 +85,7 @@ pub struct LogReader {
 }
 
 impl LogReader {
-    pub fn open(path: &str) -> std::io::Result<Self> {
+    pub fn open(path: &str) -> Result<Self, VardamirError> {
         let file = OpenOptions::new().read(true).open(path)?;
         let mut reader = LogReader {
             file: BufReader::with_capacity(8192, file),
@@ -91,15 +94,14 @@ impl LogReader {
         Ok(reader)
     }
 
-    pub fn verify_file_header(&mut self) -> std::io::Result<()> {
+    pub fn verify_file_header(&mut self) -> Result<(), VardamirError> {
         let mut magic = [0u8; 4];
         self.file.read_exact(&mut magic)?;
 
         if &magic != MAGIC {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
+            return Err(VardamirError::InvalidData(String::from(
                 "not a valid Vardamir log - magic number mismatch",
-            ));
+            )));
         }
 
         let mut version = [0u8; 2];
@@ -107,10 +109,9 @@ impl LogReader {
         let version = u16::from_be_bytes(version);
 
         if version > VERSION {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                format!("Invalid VDMR logs version: {version}"),
-            ));
+            return Err(VardamirError::InvalidData(format!(
+                "Invalid VDMR logs version: {version}"
+            )));
         }
 
         let mut padding = [0u8; 2];
@@ -122,14 +123,21 @@ impl LogReader {
     pub fn record_reader(
         &mut self,
         key: &AttestationKey,
-    ) -> std::io::Result<Option<DecisionRecord>> {
+    ) -> Result<Option<DecisionRecord>, VardamirError> {
         let mut length = [0u8; 8];
         match self.file.read_exact(&mut length) {
             Ok(()) => {}
             Err(e) if e.kind() == std::io::ErrorKind::UnexpectedEof => return Ok(None),
-            Err(e) => return Err(e),
+            Err(_) => {
+                return Err(VardamirError::InvalidData(
+                    "Failed to read record length".into(),
+                ));
+            }
         }
         let length = u64::from_be_bytes(length);
+        if length > 1_000_000 {
+            return Err(VardamirError::InvalidData("Record too large".into()));
+        }
 
         let mut checksum = [0u8; 8];
         self.file.read_exact(&mut checksum)?;
@@ -141,29 +149,25 @@ impl LogReader {
         let crc = crc32fast::hash(&bytes) as u64;
 
         if crc != checksum {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                "CRC32 checksum mismatch - record is corrupted",
-            ));
+            return Err(VardamirError::CorruptionDetected);
         }
 
         let mut signature = [0u8; 32];
-        self.file.read_exact(&mut signature)?;
+        self.file
+            .read_exact(&mut signature)
+            .map_err(|_| VardamirError::InvalidData(String::from("Failed to read signature")))?;
 
         if !key.verify(&bytes, &signature) {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                "Key verification failed - record may have been corrupted with",
-            ));
+            return Err(VardamirError::SignatureVerificationFailed);
         };
 
-        let record: DecisionRecord = bincode::deserialize(&bytes)
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+        let record: DecisionRecord =
+            bincode::deserialize(&bytes).map_err(|_| VardamirError::SerializationError)?;
 
         Ok(Some(record))
     }
 
-    pub fn read_all(&mut self, keys: &[AttestationKey]) -> std::io::Result<DecisionChain> {
+    pub fn read_all(&mut self, keys: &[AttestationKey]) -> Result<DecisionChain, VardamirError> {
         let mut records = DecisionChain::new();
         let mut key_index = 0;
 
@@ -174,34 +178,27 @@ impl LogReader {
                     key_index += 1;
                 }
                 Ok(None) => break,
-                Err(e) if e.kind() == std::io::ErrorKind::UnexpectedEof => break,
                 Err(e) => return Err(e),
             }
         }
 
         if !records.verify() {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                "Chain verification failed - records may have been tampered with",
-            ));
+            return Err(VardamirError::ChainVerificationFailed);
         }
 
         if records.len() != key_index {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                format!(
-                    "Mismatch: {} records read, but used {} keys",
-                    records.len(),
-                    key_index
-                ),
-            ));
+            return Err(VardamirError::InvalidData(alloc::format!(
+                "Mismatch: {} records read, but used {} keys",
+                records.len(),
+                key_index
+            )));
         }
 
         Ok(records)
     }
 }
 
-pub fn recover(path: &str) -> std::io::Result<()> {
+pub fn recover(path: &str) -> Result<(), VardamirError> {
     let mut file = OpenOptions::new().read(true).write(true).open(path)?;
 
     file.seek(SeekFrom::Start(FILE_HEADER_SIZE as u64))?;
@@ -214,7 +211,7 @@ pub fn recover(path: &str) -> std::io::Result<()> {
             if e.kind() == std::io::ErrorKind::UnexpectedEof {
                 return Ok(());
             }
-            return Err(e);
+            return Err(e.into());
         }
 
         let length = u64::from_be_bytes(length);
@@ -257,18 +254,18 @@ mod tests {
         let mut chain = DecisionChain::new();
         chain.append(DecisionRecord::new(
             1200,
-            "Turn Left".to_string(),
-            "Navigation".to_string(),
+            String::from("Turn Left"),
+            String::from("Navigation"),
         ));
         chain.append(DecisionRecord::new(
             1202,
-            "Located Target".to_string(),
-            "Identification".to_string(),
+            String::from("Located Target"),
+            String::from("Identification"),
         ));
         chain.append(DecisionRecord::new(
             1204,
-            "Preparing all systems".to_string(),
-            "Preparation".to_string(),
+            String::from("Preparing systems"),
+            String::from("Preparation"),
         ));
 
         let identity = DeviceIdentity::new([1u8; 32]);
@@ -304,18 +301,18 @@ mod tests {
         let mut chain = DecisionChain::new();
         chain.append(DecisionRecord::new(
             1200,
-            "Turn Left".to_string(),
-            "Navigation".to_string(),
+            String::from("Turn Left"),
+            String::from("Navigation"),
         ));
         chain.append(DecisionRecord::new(
             1202,
-            "Located Target".to_string(),
-            "Identification".to_string(),
+            String::from("Located Target"),
+            String::from("Identification"),
         ));
         chain.append(DecisionRecord::new(
             1204,
-            "Preparing all systems".to_string(),
-            "Preparation".to_string(),
+            String::from("Preparing systems"),
+            String::from("Preparation"),
         ));
 
         let identity = DeviceIdentity::new([1u8; 32]);
@@ -364,18 +361,18 @@ mod tests {
         let mut chain = DecisionChain::new();
         chain.append(DecisionRecord::new(
             1200,
-            "Turn Left".to_string(),
-            "Navigation".to_string(),
+            String::from("Turn Left"),
+            String::from("Navigation"),
         ));
         chain.append(DecisionRecord::new(
             1202,
-            "Located Target".to_string(),
-            "Identification".to_string(),
+            String::from("Located Target"),
+            String::from("Identification"),
         ));
         chain.append(DecisionRecord::new(
             1204,
-            "Preparing all systems".to_string(),
-            "Preparation".to_string(),
+            String::from("Preparing systems"),
+            String::from("Preparation"),
         ));
 
         let identity = DeviceIdentity::new([1u8; 32]);

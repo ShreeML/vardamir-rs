@@ -4,8 +4,8 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-vardamir-rs-core = { path = "../vardamir-rs-core" }
-vardamir-rs-attest = { path = "../vardamir-rs-attest" }
+vardamir-rs-core = { path = "../vardamir-rs-core", default-features = false, features = ["std"] }
+vardamir-rs-attest = { path = "../vardamir-rs-attest", default-features = false, features = ["std"] }
 bincode = "1"
 serde = { version = "1", features = ["derive"] }
 crc32fast = "1"

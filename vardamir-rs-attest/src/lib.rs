@@ -1,13 +1,18 @@
+#![no_std]
+
+extern crate alloc;
+
 use hkdf::Hkdf;
 use hmac::{Hmac, Mac};
 use sha3::{Digest, Sha3_256};
 type HmacSha3 = Hmac<Sha3_256>;
 
-#[derive(Default)] // For Testing
+#[derive(Default, Clone, Copy, PartialEq, Debug)] // For Testing
 pub struct DeviceIdentity {
     device_id: [u8; 32],
 }
 
+#[derive(Clone, Copy, PartialEq, Debug)]
 pub struct ModelCommitment {
     fingerprint: [u8; 32],
 }

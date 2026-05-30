@@ -5,12 +5,58 @@ extern crate alloc;
 #[cfg(feature = "std")]
 extern crate std;
 
+use alloc::format;
 pub use alloc::string::String;
 pub use alloc::vec::Vec;
-use alloc::format;
 
 use serde::{Deserialize, Serialize};
 use sha3::{Digest, Sha3_256};
+
+use thiserror::Error;
+
+#[derive(Error, Debug)]
+pub enum VardamirError {
+    #[error("Invalid data: {0}")]
+    InvalidData(String),
+
+    #[error("CRC32 checksum mismatch - record has been corrupted")]
+    CorruptionDetected,
+
+    #[error("Signature verification failed")]
+    SignatureVerificationFailed,
+
+    #[error("Hash chain verification failed")]
+    ChainVerificationFailed,
+
+    #[error("Serialization/Deserialization error")]
+    SerializationError,
+
+    #[error("Unknown error")]
+    Unknown,
+}
+
+impl VardamirError {
+    pub fn is_critical(&self) -> bool {
+        matches!(
+            self,
+            Self::CorruptionDetected | Self::SignatureVerificationFailed
+        )
+    }
+}
+
+impl From<std::io::Error> for VardamirError {
+    fn from(err: std::io::Error) -> Self {
+        match err.kind() {
+            std::io::ErrorKind::UnexpectedEof => {
+                VardamirError::InvalidData(String::from("Unexpected end of file"))
+            }
+            std::io::ErrorKind::InvalidData => {
+                VardamirError::InvalidData(String::from("Invalid data format"))
+            }
+            _ => VardamirError::InvalidData(alloc::format!("I/O error: {}", err)),
+        }
+    }
+}
 
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
 pub struct DecisionRecord {
@@ -135,10 +181,8 @@ mod tests {
     #[test]
     fn test_is_genesis() {
         let mut chain = DecisionChain::new();
-        let record_1 = DecisionRecord::new(
-            1200, 
-            String::from("Turn Left"), 
-            String::from("Navigation"));
+        let record_1 =
+            DecisionRecord::new(1200, String::from("Turn Left"), String::from("Navigation"));
         assert!(record_1.is_genesis());
         chain.append(record_1);
 
@@ -157,10 +201,8 @@ mod tests {
 
     #[test]
     fn test_compute_hash() {
-        let record_1 = DecisionRecord::new(
-            1200, 
-            String::from("Turn Left"), 
-            String::from("Navigation"));
+        let record_1 =
+            DecisionRecord::new(1200, String::from("Turn Left"), String::from("Navigation"));
         let record_2 = DecisionRecord::new(
             1202,
             String::from("Located Target"),
@@ -178,10 +220,8 @@ mod tests {
     #[test]
     fn test_append() {
         let mut chain = DecisionChain::new();
-        let record_1 = DecisionRecord::new(
-            1200, 
-            String::from("Turn Left"), 
-            String::from("Navigation"));
+        let record_1 =
+            DecisionRecord::new(1200, String::from("Turn Left"), String::from("Navigation"));
         let hash = record_1.compute_hash();
         chain.append(record_1);
 
@@ -201,10 +241,8 @@ mod tests {
     #[test]
     fn test_verify() {
         let mut chain = DecisionChain::new();
-        let record_1 = DecisionRecord::new(
-            1200, 
-            String::from("Turn Left"), 
-            String::from("Navigation"));
+        let record_1 =
+            DecisionRecord::new(1200, String::from("Turn Left"), String::from("Navigation"));
         chain.append(record_1);
 
         let record_2 = DecisionRecord::new(
@@ -228,11 +266,9 @@ mod tests {
 
     #[test]
     fn test_push_raw() {
-        let mut chain = DecisionChain::new();        
-        let record_1 = DecisionRecord::new(
-            1200, 
-            String::from("Turn Left"), 
-            String::from("Navigation"));
+        let mut chain = DecisionChain::new();
+        let record_1 =
+            DecisionRecord::new(1200, String::from("Turn Left"), String::from("Navigation"));
         chain.append(record_1);
 
         let record_2 = DecisionRecord::new(

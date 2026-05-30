@@ -29,9 +29,9 @@ The long-term goal is to make the core run in `no_std` environments for bare-met
 Phase 1 (core logic and log engine) is complete.  
 The attestation layer with per-record signatures has now been integrated.  
 All tests are passing.
+Ported the core, log and attest crates to `no_std` + `alloc` where applicable
 
 **Next steps:**
-- Port the core crate to `no_std` + `alloc`
 - Implement the CLI tool
 - Improve attestation key management and add hardware binding
 
