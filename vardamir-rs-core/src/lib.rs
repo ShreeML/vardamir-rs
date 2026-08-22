@@ -44,6 +44,7 @@ impl VardamirError {
     }
 }
 
+#[cfg(feature = "std")]
 impl From<std::io::Error> for VardamirError {
     fn from(err: std::io::Error) -> Self {
         match err.kind() {
