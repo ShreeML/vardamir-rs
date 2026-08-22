@@ -12,6 +12,7 @@ Autonomous systems like UAVs, robots, and AI vehicles often operate in environme
 - Decisions are stored in a binary `.vdmr` file format containing length prefix, CRC32 checksum, and a signature.
 - The log supports crash-safe appends and includes recovery logic that truncates incomplete entries after power loss.
 - Per-record attestation signatures (using HMAC-SHA3-256) allow proving which model on which hardware produced each decision.
+- Reopening an existing log rebuilds its internal state from disk rather than trusting a fresh start. If corruption is detected during that rescan, the damaged file is left untouched for forensic inspection and a new file is opened alongside it.
 
 ## Architecture
 
@@ -42,6 +43,7 @@ Ported the core, log and attest crates to `no_std` + `alloc` where applicable
 - Recovery is best-effort. While it handles common crash scenarios, very messy corruption can still cause problems.
 - Test device identities are predictable. Production code must use strong hardware-derived identities.
 - The last record in the chain relies heavily on its signature for protection (hash chaining alone is not enough for the tail).
+- A mission's full history might now be split across multiple files (mission.vdmr, mission.vdmr.recovered1, etc.) if corruption occurred mid-session, and nothing currently stitches them back together into one continuous audit trail. That's an honest gap worth naming rather than letting someone discover it.
 
 These limitations are acceptable during the core development phase, but they will be addressed before using this in real autonomous systems.
 
