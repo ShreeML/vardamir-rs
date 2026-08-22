@@ -1,2 +1,5 @@
 /target
 Cargo.lock
+
+# Local check script
+run_checks.bat
