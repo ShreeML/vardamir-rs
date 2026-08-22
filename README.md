@@ -43,7 +43,7 @@ Ported the core, log and attest crates to `no_std` + `alloc` where applicable
 - Recovery is best-effort. While it handles common crash scenarios, very messy corruption can still cause problems.
 - Test device identities are predictable. Production code must use strong hardware-derived identities.
 - The last record in the chain relies heavily on its signature for protection (hash chaining alone is not enough for the tail).
-- A mission's full history might now be split across multiple files (mission.vdmr, mission.vdmr.recovered1, etc.) if corruption occurred mid-session, and nothing currently stitches them back together into one continuous audit trail. That's an honest gap worth naming rather than letting someone discover it.
+- A mission's full history might now be split across multiple files (mission.vdmr, mission.vdmr.recovered1, etc.) if corruption occurred mid-session, and nothing currently stitches them back together into one continuous audit trail.
 
 These limitations are acceptable during the core development phase, but they will be addressed before using this in real autonomous systems.
 
